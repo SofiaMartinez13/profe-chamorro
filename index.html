@@ -1,0 +1,741 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ISC UNIVER - Auditoría de Seguridad de Generación 2023-2026</title>
+    <style>
+        :root {
+            --primary: #00ff88;
+            --primary-glow: rgba(0, 255, 136, 0.4);
+            --primary-dim: rgba(0, 255, 136, 0.15);
+            --bg-dark: #050806;
+            --bg-terminal: #0a0f0b;
+            --text-main: #e0f7ed;
+            --warning: #ffb700;
+            --error: #ff3366;
+            --font-mono: 'Courier New', Courier, monospace;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+        }
+
+        body {
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            font-family: var(--font-mono);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* Efecto de líneas de escaneo CRT */
+        body::before {
+            content: " ";
+            display: block;
+            position: absolute;
+            top: 0; left: 0; bottom: 0; right: 0;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+            z-index: 9999;
+            background-size: 100% 4px, 6px 100%;
+            pointer-events: none;
+        }
+
+        /* Matriz de partículas de fondo de la terminal */
+        #matrix-bg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            opacity: 0.04;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .terminal-container {
+            width: 100%;
+            max-width: 850px;
+            background-color: var(--bg-terminal);
+            border: 1px solid var(--primary);
+            border-radius: 8px;
+            box-shadow: 0 0 30px var(--primary-dim), inset 0 0 15px rgba(0, 255, 136, 0.05);
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            z-index: 10;
+            backdrop-filter: blur(4px);
+        }
+
+        .terminal-header {
+            background: rgba(0, 255, 136, 0.03);
+            border-bottom: 1px solid rgba(0, 255, 136, 0.3);
+            padding: 12px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .window-controls {
+            display: flex;
+            gap: 8px;
+        }
+
+        .control-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            border: 1px solid var(--primary);
+            opacity: 0.5;
+        }
+        .control-dot.active {
+            background-color: var(--primary);
+            opacity: 1;
+            box-shadow: 0 0 8px var(--primary);
+        }
+
+        .terminal-title {
+            font-size: 0.85rem;
+            color: var(--primary);
+            letter-spacing: 1px;
+            text-shadow: 0 0 5px var(--primary-glow);
+            opacity: 0.9;
+        }
+
+        .terminal-body {
+            padding: 30px;
+            height: 550px;
+            overflow-y: auto;
+            position: relative;
+        }
+
+        /* Custom Scrollbar */
+        .terminal-body::-webkit-scrollbar {
+            width: 6px;
+        }
+        .terminal-body::-webkit-scrollbar-thumb {
+            background: var(--primary-dim);
+            border-radius: 3px;
+        }
+        .terminal-body::-webkit-scrollbar-thumb:hover {
+            background: var(--primary);
+        }
+
+        .screen {
+            display: none;
+            animation: fadeIn 0.4s ease-out forwards;
+        }
+
+        .screen.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(5px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .prompt-line {
+            display: flex;
+            align-items: flex-start;
+            margin-bottom: 15px;
+            font-size: 1rem;
+        }
+
+        .prompt-user {
+            color: var(--primary);
+            margin-right: 12px;
+            white-space: nowrap;
+            text-shadow: 0 0 4px var(--primary-glow);
+        }
+
+        .prompt-text {
+            color: #ffffff;
+        }
+
+        .system-log {
+            margin-bottom: 12px;
+            line-height: 1.6;
+            font-size: 0.95rem;
+            white-space: pre-wrap;
+        }
+
+        .text-accent {
+            color: var(--primary);
+            text-shadow: 0 0 8px var(--primary-glow);
+        }
+
+        .text-warning {
+            color: var(--warning);
+            text-shadow: 0 0 8px rgba(255, 183, 0, 0.4);
+        }
+
+        .text-error {
+            color: var(--error);
+            text-shadow: 0 0 8px rgba(255, 51, 102, 0.4);
+        }
+
+        .cursor {
+            display: inline-block;
+            width: 8px;
+            height: 17px;
+            background-color: var(--primary);
+            box-shadow: 0 0 8px var(--primary);
+            animation: blink 0.8s infinite;
+            margin-left: 4px;
+            vertical-align: middle;
+        }
+
+        @keyframes blink {
+            0%, 49% { opacity: 1; }
+            50%, 100% { opacity: 0; }
+        }
+
+        /* Tablas e Historiales */
+        .academic-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            font-size: 0.85rem;
+            border: 1px solid var(--primary-dim);
+        }
+
+        .academic-table th, .academic-table td {
+            border: 1px solid var(--primary-dim);
+            padding: 10px;
+            text-align: left;
+        }
+
+        .academic-table th {
+            background: rgba(0, 255, 136, 0.08);
+            color: var(--primary);
+        }
+
+        .academic-table tr:nth-child(even) {
+            background: rgba(0, 255, 136, 0.02);
+        }
+
+        /* Barra de Progreso Simulada */
+        .progress-box {
+            margin: 15px 0;
+        }
+        .progress-bar-wrapper {
+            width: 100%;
+            height: 16px;
+            border: 1px solid var(--primary);
+            padding: 2px;
+            background: transparent;
+            margin-top: 5px;
+        }
+        .progress-bar-fill {
+            height: 100%;
+            background-color: var(--primary);
+            box-shadow: 0 0 10px var(--primary);
+            width: 0%;
+            transition: width 0.1s linear;
+        }
+
+        /* Bloques de reporte estructurados */
+        .report-card {
+            border: 1px dashed var(--primary);
+            padding: 20px;
+            background: rgba(0, 255, 136, 0.02);
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+
+        .report-card.danger-card {
+            border-color: var(--error);
+            background: rgba(255, 51, 102, 0.02);
+        }
+
+        .report-header {
+            font-weight: bold;
+            font-size: 1.1rem;
+            margin-bottom: 15px;
+            border-bottom: 1px solid rgba(0, 255, 136, 0.2);
+            padding-bottom: 8px;
+        }
+
+        /* Botones y Contenedores */
+        .action-container {
+            display: flex;
+            gap: 20px;
+            margin-top: 30px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            background: transparent;
+            border: 1px solid var(--primary);
+            color: var(--primary);
+            padding: 12px 24px;
+            font-family: var(--font-mono);
+            font-size: 0.95rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .btn:hover {
+            background: var(--primary);
+            color: var(--bg-dark);
+            box-shadow: 0 0 15px var(--primary-glow);
+        }
+
+        .btn-master {
+            font-size: 1.3rem;
+            padding: 18px 40px;
+            border-width: 2px;
+            box-shadow: 0 0 10px var(--primary-dim);
+            animation: pulseGlow 2s infinite;
+        }
+
+        @keyframes pulseGlow {
+            0% { box-shadow: 0 0 10px var(--primary-dim); }
+            50% { box-shadow: 0 0 25px var(--primary-glow); }
+            100% { box-shadow: 0 0 10px var(--primary-dim); }
+        }
+
+        .btn-slave {
+            font-size: 0.8rem;
+            padding: 8px 16px;
+            opacity: 0.6;
+            border-color: rgba(0, 255, 136, 0.4);
+        }
+        
+        .btn-slave:hover {
+            opacity: 1;
+            border-color: var(--error);
+            color: var(--error);
+            box-shadow: 0 0 10px rgba(255, 51, 102, 0.3);
+        }
+
+        /* Diálogo de bloqueo de error */
+        .error-overlay-box {
+            margin-top: 20px;
+            border: 1px solid var(--error);
+            background: rgba(255, 51, 102, 0.05);
+            padding: 15px;
+            border-radius: 4px;
+            animation: shake 0.4s ease-in-out;
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            20%, 60% { transform: translateX(-6px); }
+            40%, 80% { transform: translateX(6px); }
+        }
+
+        /* Pantalla Final Animada */
+        .final-grid {
+            text-align: center;
+            padding: 20px 0;
+        }
+
+        .mission-header {
+            font-size: 1.8rem;
+            letter-spacing: 3px;
+            margin-bottom: 25px;
+            text-shadow: 0 0 15px var(--primary-glow);
+            animation: textGlitch 3s infinite;
+        }
+
+        .final-badge {
+            display: inline-block;
+            border: 2px solid var(--primary);
+            padding: 15px 30px;
+            font-size: 1.4rem;
+            font-weight: bold;
+            margin-bottom: 35px;
+            background: rgba(0, 255, 136, 0.05);
+            box-shadow: 0 0 20px var(--primary-dim);
+        }
+
+        .final-text {
+            font-size: 1.1rem;
+            line-height: 1.8;
+            margin-bottom: 40px;
+            color: #ffffff;
+        }
+
+        .final-footer {
+            border-top: 1px dashed rgba(0, 255, 136, 0.3);
+            padding-top: 20px;
+            font-size: 0.85rem;
+            opacity: 0.8;
+        }
+
+        /* Responsive */
+        @media (max-width: 600px) {
+            body { padding: 8px; }
+            .terminal-body { padding: 15px; height: 500px; }
+            .action-container { flex-direction: column; gap: 15px; align-items: stretch; }
+            .btn { width: 100%; text-align: center; }
+            .btn-master { font-size: 1.1rem; padding: 15px 20px; }
+            .academic-table th:nth-child(1), .academic-table td:nth-child(1) { display: none; }
+            .mission-header { font-size: 1.3rem; }
+            .final-badge { font-size: 1rem; padding: 10px 15px; }
+        }
+    </style>
+</head>
+<body>
+
+<canvas id="matrix-bg"></canvas>
+
+<div class="terminal-container">
+    <div class="terminal-header">
+        <div class="window-controls">
+            <div class="control-dot active"></div>
+            <div class="control-dot"></div>
+            <div class="control-dot"></div>
+        </div>
+        <div class="terminal-title" id="terminal-title-text">root@univer:~# audit --gen 2023-2026</div>
+        <div></div>
+    </div>
+    
+    <div class="terminal-body" id="term-body">
+        
+        <div id="screen-1" class="screen active">
+            <div class="prompt-line">
+                <span class="prompt-user">univer@isc:~#</span>
+                <span class="prompt-text" id="type-1"></span>
+            </div>
+            <div id="content-1" style="display: none;">
+                <div class="system-log">[+] Conectando al nodo central del servidor académico UNIVER...</div>
+                <div class="progress-box">
+                    <div>Descargando registros analíticos de asignaturas...</div>
+                    <div class="progress-bar-wrapper"><div class="progress-bar-fill" id="progress-fill-1"></div></div>
+                </div>
+                <div id="log-table-area" style="display: none;">
+                    <div class="system-log text-accent">[OK] Registros vinculados con éxito al mapa de memoria del Ing. Jorge Alberto Chamorro Martínez.</div>
+                    <table class="academic-table">
+                        <thead>
+                            <tr>
+                                <th>Código</th>
+                                <th>Módulo del Core Tecnológico</th>
+                                <th>Línea Temporal</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr><td>ISC-PRG</td><td>Programación</td><td>Enero 2025 - Act.</td></tr>
+                            <tr><td>ISC-EST</td><td>Estructura de Datos</td><td>Enero 2025 - Act.</td></tr>
+                            <tr><td>ISC-RED</td><td>Redes</td><td>Enero 2025 - Act.</td></tr>
+                            <tr><td>ISC-BBDD</td><td>Bases de Datos</td><td>Enero 2025 - Act.</td></tr>
+                            <tr><td>ISC-TRAZ</td><td>Trazabilidad y Configuración de Software</td><td>Enero 2025 - Act.</td></tr>
+                            <tr><td>ISC-IMP</td><td>Implantación de Sistemas</td><td>Enero 2025 - Act.</td></tr>
+                            <tr><td>ISC-APP</td><td>Aplicaciones Móviles</td><td>Enero 2025 - Act.</td></tr>
+                        </tbody>
+                    </table>
+                    <div class="system-log text-warning">[*] Aviso: El sistema detectó una alta tasa de transmisión de datos críticos e indispensables en todos los sectores.</div>
+                    <div class="action-container">
+                        <button class="btn" onclick="goToScreen(2)">Ejecutar Análisis de Impacto ></button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="screen-2" class="screen">
+            <div class="prompt-line">
+                <span class="prompt-user">univer@isc:~#</span>
+                <span class="prompt-text" id="type-2"></span>
+            </div>
+            <div id="content-2" style="display: none;">
+                <div class="system-log">[+] Extrayendo métricas cualitativas y vector de influencia docente...</div>
+                <div class="report-card">
+                    <div class="report-header text-accent">> PERFIL MÉTRICO DE DESEMPEÑO: INSTRUCTOR CHAMORRO MARTÍNEZ</div>
+                    <div class="system-log">• <span class="text-accent">Arquitectura de Conocimiento:</span> Despliegue de arquitecturas limpias y bases lógicas impecables.</div>
+                    <div class="system-log">• <span class="text-accent">Compilación Práctica:</span> Cero abstracciones vacías; optimización basada en escenarios reales de producción.</div>
+                    <div class="system-log">• <span class="text-accent">Soporte Operativo:</span> Disponibilidad 24/7 para debuggear fallos de lógica y orientar el desarrollo integral.</div>
+                    <div class="system-log">• <span class="text-accent">Trazabilidad Humana:</span> Configuración perfecta de un entorno de confianza desde el hito inicial en enero de 2025.</div>
+                </div>
+                <div class="system-log text-warning">[!] Conclusión preliminar: El impacto en la infraestructura mental de los alumnos excede los límites ordinarios del plan de estudios.</div>
+                <div class="action-container">
+                    <button class="btn" onclick="goToScreen(3)">Escanear Vulnerabilidades Críticas ></button>
+                </div>
+            </div>
+        </div>
+
+        <div id="screen-3" class="screen">
+            <div class="prompt-line">
+                <span class="prompt-user">univer@isc:~#</span>
+                <span class="prompt-text" id="type-3"></span>
+            </div>
+            <div id="content-3" style="display: none;">
+                <div class="system-log text-error">[⚠] ADVERTENCIA: COMPORTAMIENTO EXCEPCIONAL LOCALIZADO EN EL OBJETIVO [⚠]</div>
+                <div class="report-card danger-card">
+                    <div class="report-header text-error">REPORTE OFICIAL DE AUDITORÍA DE INTRUSIÓN Y COMPORTAMIENTO</div>
+                    <div class="system-log"><span class="text-error">IDENTIFICADOR:</span> CVE-2026-PADRINO</div>
+                    <div class="system-log"><span class="text-error">GRAVEDAD:</span> CRÍTICO (CVSS V3: 10.0/10.0)</div>
+                    <div class="system-log" style="margin-top: 10px;"><span class="text-error">VULNERABILIDAD DETECTADA:</span></div>
+                    <div class="system-log text-accent" style="font-style: italic; background: rgba(0,255,136,0.05); padding: 10px; border-left: 3px solid var(--primary);">
+                        "Incapacidad absoluta e irreversible para dejar de ayudar, guiar, inspirar y respaldar el crecimiento profesional de sus alumnos."
+                    </div>
+                    <div class="system-log" style="margin-top: 10px;"><span class="text-error">RECOMENDACIÓN DEL REPOSITORIO:</span></div>
+                    <div class="system-log text-warning">"NO CORREGIR. Este comportamiento no representa un bug, sino una característica maestra y estructural del sistema. Se aconseja explotar esta cualidad para el cierre de ciclo académico."</div>
+                </div>
+                <div class="action-container">
+                    <button class="btn" onclick="goToScreen(4)">Acceder a Base de Datos Emocional ></button>
+                </div>
+            </div>
+        </div>
+
+        <div id="screen-4" class="screen">
+            <div class="prompt-line">
+                <span class="prompt-user">univer@isc:~#</span>
+                <span class="prompt-text" id="type-4"></span>
+            </div>
+            <div id="content-4" style="display: none;">
+                <div class="system-log">[+] Descomprimiendo logs de memoria histórica (Periodo 2023 - 2026)...</div>
+                <div class="system-log" style="line-height: 1.8;">
+                    • <span class="text-accent">Bloques de apuntes:</span> Horas de código estructurado en el pizarrón que se convirtieron en nuestra base analítica.<br>
+                    • <span class="text-accent">Proyectos y despliegues:</span> Desafíos lógicos que parecían imposibles en bases de datos o aplicaciones móviles, pero que superamos bajo su tutela.<br>
+                    • <span class="text-accent">Gestión de desveladas:</span> Compilaciones nocturnas eternas buscando corregir errores de sintaxis y configuración de red.<br>
+                    • <span class="text-accent">Lecciones y recuerdos:</span> Consejos que trascendieron la ingeniería de software para convertirse en guías de vida y criterio profesional.<br>
+                    • <span class="text-accent">El factor enero 2025:</span> El momento exacto donde la retícula de materias cobró sentido real gracias a su nivel de docencia.
+                </div>
+                <div class="system-log text-accent" style="margin-top: 15px;">[*] Conclusión de la secuencia: Cada línea de código escrita tiene impresa la calidad de su mentoría.</div>
+                <div class="action-container">
+                    <button class="btn" onclick="goToScreen(5)">Cargar Conclusión del Sistema ></button>
+                </div>
+            </div>
+        </div>
+
+        <div id="screen-5" class="screen">
+            <div class="prompt-line">
+                <span class="prompt-user">univer@isc:~#</span>
+                <span class="prompt-text" id="type-5"></span>
+            </div>
+            <div id="content-5" style="display: none;">
+                <div class="system-log" style="margin-bottom: 20px;">Después de analizar toda la evidencia recopilada, el sistema encontró una única conclusión lógica y posible...</div>
+                
+                <div class="report-card" style="border-style: solid; background: rgba(0,255,136,0.03); text-align: center; padding: 25px 15px;">
+                    <div class="text-accent" style="font-weight: bold; font-size: 1.2rem; margin-bottom: 15px;">PROPUESTA DE DESIGNACIÓN FORMAL</div>
+                    <div class="system-log" style="font-size: 1.1rem; color: #ffffff;">
+                        Ing. Jorge Alberto Chamorro Martínez,<br>
+                        ¿Acepta convertirse formalmente en el <span class="text-accent" style="font-weight: bold;">PADRINO DE GENERACIÓN</span> de la carrera de Ingeniería en Sistemas Computacionales?
+                    </div>
+                </div>
+
+                <div class="action-container" style="justify-content: center; gap: 30px; margin-top: 25px;">
+                    <button class="btn btn-master" onclick="triggerAcceptProtocol()">ACEPTAR</button>
+                    <button class="btn btn-slave" id="reject-btn" onclick="triggerReject()">RECHAZAR</button>
+                </div>
+
+                <div id="error-box" class="error-overlay-box" style="display: none;">
+                    <div class="text-error" style="font-weight: bold; margin-bottom: 5px;">[✖] STATUS CODE: ERROR 403 (FORBIDDEN)</div>
+                    <div class="system-log" style="margin: 0; font-size: 0.9rem;">
+                        <span class="text-error">Motivo:</span> La solicitud de denegación no puede ser procesada debido al exceso de evidencia positiva, respeto mutuo y agradecimiento acumulado en los registros del servidor. El kernel ha bloqueado esta función de forma permanente.
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="screen-protocol" class="screen">
+            <div class="system-log text-accent">> Ejecutando protocolo padrino...</div>
+            <div class="system-log" id="proto-log-1" style="display: none;">> Verificando decisión del docente... [CONFIRMADO]</div>
+            <div class="system-log" id="proto-log-2" style="display: none;">> Validando evidencias académicas y lazos humanos... [VÁLIDO]</div>
+            <div class="system-log text-accent" id="proto-log-3" style="display: none; font-weight: bold; font-size: 1.2rem; margin-top: 15px;">> ACCESS GRANTED. DESPLEGANDO MATRIZ FINAL...</div>
+        </div>
+
+        <div id="screen-final" class="screen">
+            <div class="final-grid">
+                <div class="text-accent mission-header">// ACCESS GRANTED //</div>
+                <div class="final-badge text-accent">PADRINO DE GENERACIÓN CONFIRMADO</div>
+                
+                <div class="final-text">
+                    Ing. Jorge Alberto Chamorro Martínez,<br>
+                    <span class="text-accent" style="font-weight: bold;">Gracias por dejar una huella imborrable en nuestra formación.</span><br>
+                    Su paciencia, conocimiento y mentoría han configurado con éxito las bases de nuestro futuro profesional.
+                </div>
+
+                <div class="final-footer">
+                    <span class="text-accent">GENERACIÓN 2023–2026</span><br>
+                    Ingeniería en Sistemas Computacionales<br>
+                    <span style="font-weight: bold; color: #ffffff;">UNIVER</span>
+                </div>
+            </div>
+        </div>
+
+        <span class="cursor" id="global-cursor"></span>
+    </div>
+</div>
+
+<script>
+    // Configuración de comandos a simular en la terminal
+    const terminalScripts = {
+        1: "initialize_system_audit --target=UNIVER_ISC --period=2023_2026",
+        2: "run --analytics --instructor='Ing. Jorge Alberto Chamorro Martinez'",
+        3: "vuln-scan --cve=2026 --evaluate-impact",
+        4: "cat /var/log/records/desveladas_proyectos_aprendizajes.txt",
+        5: "sudo systemctl execute --deploy-final-resolution"
+    };
+
+    // Control de escritura tipo máquina
+    function typeEffect(text, elementId, speed, callback) {
+        let index = 0;
+        const element = document.getElementById(elementId);
+        element.innerHTML = "";
+        
+        function type() {
+            if (index < text.length) {
+                element.innerHTML += text.charAt(index);
+                index++;
+                setTimeout(type, speed);
+            } else {
+                if (callback) callback();
+            }
+        }
+        type();
+    }
+
+    // Control de barra de progreso interactiva
+    function runProgressBar(barId, callback) {
+        const bar = document.getElementById(barId);
+        let width = 0;
+        const interval = setInterval(() => {
+            if (width >= 100) {
+                clearInterval(interval);
+                if (callback) callback();
+            } else {
+                width += 2;
+                bar.style.width = width + "%";
+            }
+        }, 25);
+    }
+
+    // Máquina de estados para navegación entre pantallas de la terminal
+    function goToScreen(screenNumber) {
+        // Ocultar todas las pantallas
+        document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+        
+        // Mostrar la pantalla objetivo
+        const currentScreen = document.getElementById(`screen-${screenNumber}`);
+        currentScreen.classList.add('active');
+        
+        // Ejecutar animación de escritura del comando
+        const commandText = terminalScripts[screenNumber];
+        const typeContainerId = `type-${screenNumber}`;
+        const contentContainerId = `content-${screenNumber}`;
+        
+        // Ocultar el cursor global momentáneamente si es necesario para anexarlo al comando actual
+        const cursor = document.getElementById('global-cursor');
+        currentScreen.querySelector('.prompt-line').appendChild(cursor);
+
+        typeEffect(commandText, typeContainerId, 20, () => {
+            document.getElementById(contentContainerId).style.display = 'block';
+            
+            // Lógica interna específica de la pantalla 1 (Barra de progreso)
+            if (screenNumber === 1) {
+                runProgressBar('progress-fill-1', () => {
+                    document.getElementById('log-table-area').style.display = 'block';
+                    scrollTerminalToBottom();
+                });
+            }
+            scrollTerminalToBottom();
+        });
+    }
+
+    function scrollTerminalToBottom() {
+        const body = document.getElementById('term-body');
+        body.scrollTop = body.scrollHeight;
+    }
+
+    // Funciones de acción de botones finales
+    function triggerReject() {
+        const errorBox = document.getElementById('error-box');
+        errorBox.style.display = 'block';
+        scrollTerminalToBottom();
+        
+        // Animación pequeña para simular resistencia al movimiento
+        const rejectBtn = document.getElementById('reject-btn');
+        rejectBtn.style.transform = `translate(${Math.random() * 10 - 5}px, ${Math.random() * 10 - 5}px)`;
+    }
+
+    function triggerAcceptProtocol() {
+        document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+        document.getElementById('screen-protocol').classList.add('active');
+        document.getElementById('terminal-title-text').innerHTML = "root@univer:~# systemctl confirm-padrino";
+        
+        const cursor = document.getElementById('global-cursor');
+        document.getElementById('screen-protocol').appendChild(cursor);
+
+        setTimeout(() => {
+            document.getElementById('proto-log-1').style.display = 'block';
+            setTimeout(() => {
+                document.getElementById('proto-log-2').style.display = 'block';
+                setTimeout(() => {
+                    document.getElementById('proto-log-3').style.display = 'block';
+                    setTimeout(() => {
+                        // Transición cinematográfica final
+                        document.getElementById('screen-protocol').classList.remove('active');
+                        cursor.style.display = 'none';
+                        document.getElementById('screen-final').classList.add('active');
+                        document.getElementById('terminal-title-text').innerHTML = "root@univer:~# core_dump --success";
+                    }, 1200);
+                }, 800);
+            }, 800);
+        }, 600);
+    }
+
+    // Fondo decorativo Canvas Matrix optimizado
+    function initBackgroundMatrix() {
+        const canvas = document.getElementById('matrix-bg');
+        const ctx = canvas.getContext('2d');
+
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        const characters = "0101010101010101010101010101010100110101010101110001ISC";
+        const fontSize = 14;
+        const columns = canvas.width / fontSize;
+        const drops = Array(Math.floor(columns)).fill(1);
+
+        function draw() {
+            ctx.fillStyle = 'rgba(5, 8, 6, 0.05)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.fillStyle = '#00ff88';
+            ctx.font = fontSize + 'px monospace';
+
+            for (let i = 0; i < drops.length; i++) {
+                const text = characters.charAt(Math.floor(Math.random() * characters.length));
+                ctx.fillText(text, i * fontSize, drops[i] * fontSize);
+
+                if (drops[i] * fontSize > canvas.height && Math.random() * 0.975 > 0.95) {
+                    drops[i] = 0;
+                }
+                drops[i]++;
+            }
+        }
+        
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        });
+
+        setInterval(draw, 33);
+    }
+
+    // Inicialización del sistema al cargar ventana
+    window.onload = function() {
+        initBackgroundMatrix();
+        goToScreen(1);
+    };
+</script>
+
+</body>
+</html>
